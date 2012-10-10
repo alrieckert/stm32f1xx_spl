@@ -7,9 +7,22 @@ uses
   stm32f1xx_rcc;
   
 type
- TGPIOSpeed_TypeDef = (GPIO_Speed_10MHz = 1, GPIO_Speed_2MHz, GPIO_Speed_50MHz);
+ TGPIOSpeed_TypeDef = (
+   GPIO_Speed_10MHz = 1, 
+   GPIO_Speed_2MHz, 
+   GPIO_Speed_50MHz
+ );
 
- TGPIOMode_TypeDef = byte;
+ TGPIOMode_TypeDef = (
+   GPIO_Mode_AIN         = $00,
+   GPIO_Mode_IN_FLOATING = $04,
+   GPIO_Mode_Out_PP      = $10,
+   GPIO_Mode_Out_OD      = $14,
+   GPIO_Mode_AF_PP       = $18,
+   GPIO_Mode_AF_OD       = $1C,
+   GPIO_Mode_IPD         = $28,
+   GPIO_Mode_IPU         = $48
+ );
 
  TGPIO_InitTypeDef = record
   GPIO_Pin   : word;
@@ -18,16 +31,6 @@ type
  end;
 
  TBitAction = (Bit_RESET, Bit_SET);
-
-const
- GPIO_Mode_AIN         = $00;
- GPIO_Mode_IN_FLOATING = $04;
- GPIO_Mode_Out_PP      = $10;
- GPIO_Mode_Out_OD      = $14;
- GPIO_Mode_AF_PP       = $18;
- GPIO_Mode_AF_OD       = $1C;
- GPIO_Mode_IPD         = $28;
- GPIO_Mode_IPU         = $48;
 
 const
  GPIO_Pin_0                 = $0001;  { Pin 0 selected }
@@ -156,6 +159,94 @@ procedure GPIO_AFIODeInit;
 begin
   RCC_APB2PeriphResetCmd(RCC_APB2Periph_AFIO, ENABLED);
   RCC_APB2PeriphResetCmd(RCC_APB2Periph_AFIO, DISABLED);
+end;
+
+//======================================================================
+procedure GPIO_Init(var GPIOx: TPortRegisters; GPIO_Pin : word; GPIO_Mode : TGPIOMode_TypeDef; GPIO_Speed : TGPIOSpeed_TypeDef = GPIO_Speed_50MHz);
+var 
+  currentmode, 
+  currentpin, 
+  pinpos, 
+  pos, 
+  tmpreg, 
+  pinmask : dword;
+begin
+  {---------------------------- GPIO Mode Configuration -----------------------}
+  currentmode := dword(GPIO_Mode) and $0F;
+
+  if (dword(GPIO_Mode) and $10) <> $00 then
+  begin
+    { Output mode }
+    currentmode := currentmode or dword(GPIO_Speed);
+  end;
+
+  {---------------------------- GPIO CRL Configuration ------------------------}
+  { Configure the eight low port pins }
+  if (GPIO_Pin and $00FF) <> $00 then
+  begin
+    tmpreg := GPIOx.CRL;
+
+    for pinpos := 0 to 7 do
+    begin
+      pos := 1 shl pinpos;
+      { Get the port pins position }
+      currentpin := GPIO_Pin and pos;
+
+      if currentpin = pos then
+      begin
+        pos := pinpos shl 2;
+        { Clear the corresponding low control register bits }
+        pinmask := $0F shl pos;
+        tmpreg := tmpreg and not(pinmask);
+
+        { Write the mode configuration in the corresponding bits }
+        tmpreg := tmpreg or (currentmode shl pos);
+
+        { Reset the corresponding ODR bit }
+        if GPIO_Mode = GPIO_Mode_IPD then
+          GPIOx.BRR := 1 shl pinpos;
+
+        { Set the corresponding ODR bit }
+        if GPIO_Mode = GPIO_Mode_IPU then
+          GPIOx.BSRR := 1 shl pinpos;
+      end;
+    end;
+    GPIOx.CRL := tmpreg;
+    tmpreg := 0;
+  end;
+
+  {---------------------------- GPIO CRH Configuration ------------------------}
+  { Configure the eight high port pins }
+  if GPIO_Pin > $00FF then
+  begin
+    tmpreg := GPIOx.CRH;
+    for pinpos := 0 to 7 do
+    begin
+      pos := 1 shl (pinpos + 8);
+      { Get the port pins position }
+      currentpin := GPIO_Pin and pos;
+
+      if currentpin = pos then
+      begin
+        pos := pinpos shl 2;
+        { Clear the corresponding high control register bits }
+        pinmask := $0F shl pos;
+        tmpreg := tmpreg and not(pinmask);
+
+        { Write the mode configuration in the corresponding bits }
+        tmpreg := tmpreg or (currentmode shl pos);
+
+        { Reset the corresponding ODR bit }
+        if GPIO_Mode = GPIO_Mode_IPD then
+          GPIOx.BRR := 1 shl (pinpos + 8);
+
+        { Set the corresponding ODR bit }
+        if GPIO_Mode = GPIO_Mode_IPU then
+          GPIOx.BSRR := 1 shl (pinpos + 8);
+      end;
+    end;
+    GPIOx.CRH := tmpreg;
+  end;
 end;
 
 //======================================================================

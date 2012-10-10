@@ -8,16 +8,16 @@ uses
 
 type
  TUSART_InitTypeDef = record
-  USART_BaudRate: dword;
-  USART_WordLength,
-  USART_StopBits,
-  USART_Parity,
-  USART_HardwareFlowControl,
-  USART_Mode,
-  USART_Clock,
-  USART_CPOL,
-  USART_CPHA,
-  USART_LastBit: word;
+    USART_BaudRate: dword;
+    USART_WordLength,
+    USART_StopBits,
+    USART_Parity,
+    USART_HardwareFlowControl,
+    USART_Mode,
+    USART_Clock,
+    USART_CPOL,
+    USART_CPHA,
+    USART_LastBit: word;
  end;
 
 const
@@ -89,7 +89,10 @@ const
  USART_FLAG_PE                        = $0001;
 
 procedure USART_DeInit(var USARTx: TUSARTRegisters);
+
 procedure USART_Init(var USARTx: TUSARTRegisters; var USART_InitStruct: TUSART_InitTypeDef);
+procedure USART_Init(var USARTx: TUSARTRegisters; USART_BaudRate: dword; USART_WordLength : word; USART_Parity : char; USART_StopBits : word; USART_HardwareFlowControl : word = USART_HardwareFlowControl_None; USART_Mode : word = (USART_Mode_Rx or USART_Mode_Tx));
+
 procedure USART_StructInit(var USART_InitStruct: TUSART_InitTypeDef);
 procedure USART_Cmd(var USARTx: TUSARTRegisters; NewState: TState);
 procedure USART_ITConfig(var USARTx: TUSARTRegisters; USART_IT: word; NewState: TState);
@@ -189,8 +192,9 @@ end;
 
 //======================================================================
 procedure USART_Init(var USARTx: TUSARTRegisters; var USART_InitStruct: TUSART_InitTypeDef);
-var apbclock: longword;
-   RCC_ClocksStatus: TRCC_ClocksTypeDef;
+var 
+  apbclock: longword;
+  RCC_ClocksStatus : TRCC_ClocksTypeDef;
 begin
   {---------------------------- USART CR2 Configuration -----------------------}
   USARTx.CR2 := (USARTx.CR2 and CR2_CLEAR_Mask) or USART_InitStruct.USART_StopBits or USART_InitStruct.USART_Clock or USART_InitStruct.USART_CPOL or USART_InitStruct.USART_CPHA or USART_InitStruct.USART_LastBit;
@@ -211,6 +215,54 @@ begin
 
   { Write to USART BRR }
   USARTx.BRR := apbclock div USART_InitStruct.USART_BaudRate;
+end;
+
+//======================================================================
+procedure USART_Init(var USARTx: TUSARTRegisters; USART_BaudRate: dword; USART_WordLength : word; USART_Parity : char; USART_StopBits : word; USART_HardwareFlowControl : word = USART_HardwareFlowControl_None; USART_Mode : word = (USART_Mode_Rx or USART_Mode_Tx));
+var 
+  apbclock: longword;
+  RCC_ClocksStatus : TRCC_ClocksTypeDef;
+  
+	wlen,
+	sb,
+  parity : word;
+  
+begin
+  case USART_WordLength of
+    9 : wlen := USART_WordLength_9b
+    else wlen := USART_WordLength_8b;
+  end;
+
+  case USART_StopBits of
+    2 : sb := USART_StopBits_2
+    else sb := USART_StopBits_1;
+  end;
+
+  // USART CR2 Configuration
+  USARTx.CR2 := (USARTx.CR2 and CR2_CLEAR_Mask) or sb or USART_Clock_Disable or USART_CPOL_Low or USART_CPHA_1Edge or USART_LastBit_Disable;
+
+  // USART CR1 Configuration
+  case USART_Parity of
+    'E' : parity := USART_Parity_Even;
+    'O' : parity := USART_Parity_Odd
+    else parity := USART_Parity_No;
+  end;
+    
+  USARTx.CR1 := (USARTx.CR1 and CR1_CLEAR_Mask) or wlen or parity or USART_Mode;
+
+  // USART CR3 Configuration
+  USARTx.CR3 := (USARTx.CR3 and CR3_CLEAR_Mask) or USART_HardwareFlowControl;
+
+  // USART BRR Configuration 
+  RCC_GetClocksFreq(RCC_ClocksStatus);
+
+  if @USARTx = @Usart1 then
+    apbclock := RCC_ClocksStatus.PCLK2_Frequency
+  else
+    apbclock := RCC_ClocksStatus.PCLK1_Frequency;
+
+  // Write to USART BRR
+  USARTx.BRR := apbclock div USART_BaudRate;
 end;
 
 //======================================================================
@@ -313,7 +365,7 @@ end;
 //======================================================================
 procedure USART_SendData(var USARTx: TUSARTRegisters; Data: Word);
 begin
-  USARTx.DR := byte(Data and $1FF);
+	USARTx.DR := Data and $1FF;
   while (USARTx.SR AND (1 shl 7)) = 0 do;
 end;
 
@@ -324,7 +376,7 @@ var
 begin
   for i := 1 to length(Data) do
   begin
-    USARTx.DR := ord(Data[i]) and $1FF;
+		USARTx.DR := ord(Data[i]) and $1FF;
     while (USARTx.SR AND (1 shl 7)) = 0 do;
   end;
 end;
